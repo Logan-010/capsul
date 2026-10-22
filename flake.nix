@@ -1,5 +1,5 @@
 {
-  description = "Rust package flake";
+  description = "Capsul Flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -41,21 +41,26 @@
       in
       {
         packages.default = naersk-lib.buildPackage {
-          src = ./.;
+          src = ./capsul;
+
+          nativeBuildDependencies = with pkgs; [
+            clang
+          ];
         };
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
+            # Rust toolchain
             toolchain
-
-            pkg-config
-            openssl
-
-            git
-            just
-            bacon
-
             rust-analyzer
+
+            # Development packages
+            pkg-config
+            clang
+
+            # Development tools
+            git
+            gnumake
           ];
 
           RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
