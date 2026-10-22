@@ -24,6 +24,9 @@ dependencies = [
 [[package]]
 name = "capsul"
 version = "0.1.0"
+dependencies = [
+ "shards",
+]
 
 [[package]]
 name = "cfg-if"
@@ -212,6 +215,7 @@ dependencies = [
 name = "shards"
 version = "0.1.0"
 dependencies = [
+ "crypto",
  "reed-solomon-simd",
 ]
 

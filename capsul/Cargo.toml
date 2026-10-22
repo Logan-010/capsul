@@ -6,3 +6,4 @@ authors = ["Logan-010"]
 description = "Distributed reliable file storage"
 
 [dependencies]
+shards = { workspace = true }

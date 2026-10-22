@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 reed-solomon-simd = "3.1.0"
+crypto = { workspace = true }
