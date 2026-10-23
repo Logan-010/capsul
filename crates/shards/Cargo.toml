@@ -6,3 +6,9 @@ edition = "2024"
 [dependencies]
 reed-solomon-simd = "3.1.0"
 crypto = { workspace = true }
+serde = { version = "1.0.229", features = ["derive"] }
+blake3 = { version = "1.8.7", features = ["mmap", "rayon", "serde"] }
+tracing = "0.1.44"
+
+[dev-dependencies]
+tempfile = "3"
