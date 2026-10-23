@@ -41,7 +41,7 @@
       in
       {
         packages.default = naersk-lib.buildPackage {
-          src = ./capsul;
+          src = ./.;
 
           nativeBuildDependencies = with pkgs; [
             clang

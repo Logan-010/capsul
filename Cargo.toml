@@ -9,9 +9,15 @@ description = "Distributed reliable file storage"
 blake3 = { version = "1.8.7", features = ["mmap", "rayon", "serde"] }
 chacha20poly1305 = "0.11.0"
 ciborium = "0.2.2"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+color-eyre = "0.6.5"
 reed-solomon-simd = "3.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
 tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
 
 [profile.release]
 lto = "fat"
@@ -23,5 +29,3 @@ incremental = false
 rpath = false
 overflow-checks = false
 
-[dev-dependencies]
-tempfile = "3.27.0"
