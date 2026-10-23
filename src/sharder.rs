@@ -1,3 +1,13 @@
+//! File sharding and recovery using Reed–Solomon erasure coding.
+//!
+//! Original shards are named `{index}o.shard` and recovery shards
+//! `{index}r.shard`, with zero-based indices. Each original shard contains a
+//! four-byte little-endian payload length, the payload, and zero padding.
+//! Recovery shards protect the entire padded original shards.
+//!
+//! Keep the returned [`ShardManifest`] and the original file's BLAKE3 hash to
+//! decode later. The manifest records shard hashes, but not the file hash.
+
 use crate::padding;
 use blake3::{Hash, Hasher};
 use reed_solomon_simd::{ReedSolomonDecoder, ReedSolomonEncoder};
@@ -7,22 +17,31 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::Path;
 
+/// File size and shard layout used for encoding and recovery.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ShardingConfig {
+    /// Expected input file size in bytes.
     file_size: usize,
+    /// Total bytes per shard, including the original shard's length prefix.
     shard_size: usize,
+    /// Number of original shards needed to hold the input payload.
     original_shards: usize,
+    /// Number of redundant shards to generate.
     recovery_shards: usize,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct ShardManifest {
-    config: ShardingConfig,
-    original_shards: Vec<Hash>,
-    recovery_shards: Vec<Hash>,
-}
-
 impl ShardingConfig {
+    /// Creates a layout for a file of `file_size` bytes.
+    ///
+    /// Each original shard holds up to `shard_size - 4` payload bytes. The
+    /// original shard count is rounded up to fit the expected file size.
+    /// `file_size` must match the file later supplied to [`Encoder::encode`];
+    /// encoding does not check this automatically.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `shard_size` is at most four bytes or `recovery_shards` is zero.
+    /// Additional Reed–Solomon constraints are checked by [`Encoder::new`].
     pub fn new(file_size: usize, shard_size: usize, recovery_shards: usize) -> Self {
         assert!(shard_size > 4, "Shard size is too small");
         assert!(recovery_shards > 0, "Recovery shards is set to 0");
@@ -36,12 +55,33 @@ impl ShardingConfig {
     }
 }
 
+/// Serializable layout and BLAKE3 hashes of the encoded shard files.
+///
+/// Hashes are ordered by shard index within each shard kind. This manifest is
+/// returned by [`Encoder::encode`]; it is not written to disk automatically.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ShardManifest {
+    /// Layout used to produce the shards.
+    config: ShardingConfig,
+    /// Hashes of the complete padded original shards.
+    original_shards: Vec<Hash>,
+    /// Hashes of the complete recovery shards.
+    recovery_shards: Vec<Hash>,
+}
+
+/// Writes original and recovery shard files for a configured input size.
 pub struct Encoder {
     inner: ReedSolomonEncoder,
     config: ShardingConfig,
 }
 
 impl Encoder {
+    /// Creates a Reed–Solomon encoder for `config`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the Reed–Solomon implementation rejects the shard counts or
+    /// shard size, including a layout with no original shards.
     pub fn new(config: ShardingConfig) -> Self {
         Self {
             inner: ReedSolomonEncoder::new(
@@ -54,6 +94,16 @@ impl Encoder {
         }
     }
 
+    /// Splits the file at `from` into shard files in the directory `to`.
+    ///
+    /// The destination directory must already exist. Existing shard files with
+    /// matching names are overwritten. Returns the layout and shard hashes;
+    /// callers must store the manifest and original file hash separately.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading, writing, hashing, or Reed–Solomon encoding
+    /// fails. Shard files already written are not removed on failure.
     pub fn encode<P: AsRef<Path>>(&mut self, from: P, to: P) -> io::Result<ShardManifest> {
         let mut buf = vec![0u8; self.config.shard_size];
         let mut file = File::open(from.as_ref())?;
@@ -109,14 +159,33 @@ impl Encoder {
     }
 }
 
+/// Reconstructs a file from verified original and recovery shards.
 #[derive(Default)]
 pub struct Decoder;
 
 impl Decoder {
+    /// Creates a stateless decoder.
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
+    /// Reconstructs the file at `to` from shards in the directory `from`.
+    ///
+    /// Uses `manifest` to locate and verify shards. Missing, unreadable during
+    /// hashing, or hash-mismatched shards are ignored. Recovery requires at
+    /// least as many valid shards in total as there are original shards.
+    /// `hash` is the expected BLAKE3 hash of the complete original file.
+    ///
+    /// The output is created or truncated after Reed–Solomon decoding succeeds.
+    /// Its parent directory must already exist. The reconstructed file is then
+    /// checked against `hash`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid Reed–Solomon layout, insufficient valid
+    /// shards, shard read or reconstruction failures, invalid padding, output
+    /// I/O failures, or a final file hash mismatch. Output already written is
+    /// not removed on failure, including a hash mismatch.
     pub fn decode<P: AsRef<Path>>(
         &self,
         from: P,

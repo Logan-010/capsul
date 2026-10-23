@@ -1,11 +1,17 @@
-[workspace]
-resolver = "3"
-members = [ "capsul", "crates/crypto", "crates/manifest", "crates/shards"]
+[package]
+name = "capsul"
+version = "0.1.0"
+edition = "2024"
+authors = ["Logan-010"]
+description = "Distributed reliable file storage"
 
-[workspace.dependencies]
-crypto = { path = "crates/crypto" }
-manifest = { path = "crates/manifest" }
-shards = { path = "crates/shards" }
+[dependencies]
+blake3 = { version = "1.8.7", features = ["mmap", "rayon", "serde"] }
+chacha20poly1305 = "0.11.0"
+ciborium = "0.2.2"
+reed-solomon-simd = "3.1.0"
+serde = { version = "1.0.229", features = ["derive"] }
+tracing = "0.1.44"
 
 [profile.release]
 lto = "fat"
@@ -16,3 +22,6 @@ debug = false
 incremental = false
 rpath = false
 overflow-checks = false
+
+[dev-dependencies]
+tempfile = "3.27.0"
