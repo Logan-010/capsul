@@ -15,4 +15,5 @@ been stored can be recovered from its shards.
 ## Why?
 
 For fun! And because there's an actual use for something like this. It lets you
-securely distribute a file to an untrusted network of peers. 
+securely distribute a file to an untrusted network of peers.
+
