@@ -94,12 +94,13 @@ pub fn encrypt_shards<P: AsRef<Path>>(
     })
 }
 
-/// Decrypts all shards in place and returns their plaintext hashes.
+/// Decrypts available shards in place and returns their plaintext hashes.
 ///
 /// Requires the format produced by [`encrypt_shards`]. Each file's hash and
-/// authentication tag are verified before it is overwritten. Missing, corrupt,
-/// truncated, or unauthenticated shards return an error. Shards already
-/// processed remain decrypted on failure.
+/// authentication tag are verified before it is overwritten. Missing shards are
+/// skipped, retaining their encrypted hashes as placeholders to preserve indices.
+/// Corrupt, truncated, unauthenticated, or otherwise unreadable shards return an
+/// error. Shards already processed remain decrypted on failure.
 pub fn decrypt_shards<P: AsRef<Path>>(
     from: P,
     key: &[u8; KEY_SIZE],
@@ -112,7 +113,11 @@ pub fn decrypt_shards<P: AsRef<Path>>(
             .map(|(i, hash)| {
                 let name = format!("{i}{kind}.shard");
                 let path = from.as_ref().join(&name);
-                let mut data = fs::read(&path).wrap_err_with(|| format!("Reading {name}"))?;
+                let mut data = match fs::read(&path) {
+                    Ok(data) => data,
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(hash),
+                    Err(err) => return Err(err).wrap_err_with(|| format!("Reading {name}")),
+                };
                 ensure!(blake3::hash(&data) == hash, "Shard hash mismatch: {name}");
                 ensure!(
                     data.len() >= NONCE_SIZE + TAG_SIZE,
@@ -179,6 +184,49 @@ mod tests {
             .decode(dir.path(), output.as_path(), restored, blake3::hash(DATA))
             .unwrap();
         assert_eq!(fs::read(output).unwrap(), DATA);
+    }
+
+    #[test]
+    fn test_decrypt_skips_missing_shards() {
+        let (dir, original) = sample();
+        let encrypted = encrypt_shards(dir.path(), &KEY, original.clone()).unwrap();
+        let missing_original_hash = encrypted.original[0];
+        let missing_recovery_hash = encrypted.recovery[0];
+        fs::remove_file(dir.path().join("0o.shard")).unwrap();
+        fs::remove_file(dir.path().join("0r.shard")).unwrap();
+
+        let restored = decrypt_shards(dir.path(), &KEY, encrypted).unwrap();
+        assert_eq!(
+            restored.original_shards.len(),
+            original.original_shards.len()
+        );
+        assert_eq!(
+            restored.recovery_shards.len(),
+            original.recovery_shards.len()
+        );
+        assert_eq!(restored.original_shards[0], missing_original_hash);
+        assert_eq!(restored.recovery_shards[0], missing_recovery_hash);
+        assert_eq!(restored.original_shards[1], original.original_shards[1]);
+        assert_eq!(restored.recovery_shards[1], original.recovery_shards[1]);
+        assert!(!dir.path().join("0o.shard").exists());
+        assert!(!dir.path().join("0r.shard").exists());
+
+        let output = dir.path().join("output");
+        Decoder::new()
+            .decode(dir.path(), output.as_path(), restored, blake3::hash(DATA))
+            .unwrap();
+        assert_eq!(fs::read(output).unwrap(), DATA);
+    }
+
+    #[test]
+    fn test_decrypt_rejects_other_read_errors() {
+        let (dir, manifest) = sample();
+        let encrypted = encrypt_shards(dir.path(), &KEY, manifest).unwrap();
+        let path = dir.path().join("0o.shard");
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+
+        assert!(decrypt_shards(dir.path(), &KEY, encrypted).is_err());
     }
 
     #[test]
