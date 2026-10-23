@@ -62,11 +62,11 @@ impl ShardingConfig {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ShardManifest {
     /// Layout used to produce the shards.
-    config: ShardingConfig,
+    pub config: ShardingConfig,
     /// Hashes of the complete padded original shards.
-    original_shards: Vec<Hash>,
+    pub original_shards: Vec<Hash>,
     /// Hashes of the complete recovery shards.
-    recovery_shards: Vec<Hash>,
+    pub recovery_shards: Vec<Hash>,
 }
 
 /// Writes original and recovery shard files for a configured input size.
