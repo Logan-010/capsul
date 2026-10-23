@@ -220,6 +220,34 @@ impl Exchange {
         Ok(Some(data))
     }
 
+    /// Push data to a remote
+    pub async fn push<D: AsRef<[u8]>>(
+        &self,
+        endpoint: &Endpoint,
+        to: impl Into<EndpointAddr>,
+        data: D,
+    ) -> color_eyre::Result<()> {
+        if data.as_ref().len() > Self::MAX_SIZE {
+            bail!("Data is too large");
+        }
+
+        let conn = endpoint.connect(to, Self::ALPN).await?;
+
+        let (mut tx, mut rx) = conn.open_bi().await?;
+        tx.write_all(Self::PUT_MSG).await?;
+        tx.write_all(data.as_ref()).await?;
+        tx.finish()?;
+
+        let mut code = [0u8; Self::MSG_LEN];
+        rx.read_exact(&mut code).await?;
+
+        if code != Self::OK_MSG {
+            bail!("Invalid message");
+        }
+
+        Ok(())
+    }
+
     async fn task(&self, conn: Connection) -> color_eyre::Result<()> {
         if !self.has_peer(&conn.remote_id()).await {
             bail!("Unauthenticated peer");
@@ -253,6 +281,8 @@ impl Exchange {
                 rx.stop(0u8.into())?;
 
                 self.put(data).await?;
+
+                tx.write_all(Self::OK_MSG).await?;
             }
             Self::HAS_MSG => {
                 let mut hash_raw = [0u8; 32];

@@ -6,6 +6,7 @@ use std::io::{self, Cursor};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Manifest {
     pub name: String,
+    pub key: [u8; 32],
     pub hash: Hash,
     pub shards: ShardManifest,
 }
