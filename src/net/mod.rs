@@ -2,7 +2,7 @@ mod exchange;
 use exchange::Exchange;
 
 mod dht;
-use dht::PeerDiscovery;
+use dht::{HashLookup, PeerDiscovery};
 
 mod auth;
 use auth::PeerAuth;

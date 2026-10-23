@@ -1,5 +1,5 @@
 use blake3::Hash;
-use color_eyre::eyre::{Context, bail};
+use color_eyre::eyre::Context;
 use iroh::{Endpoint, EndpointId};
 use iroh_mainline_endpoint_discovery::{AddrIndex, Publisher, Resolver, infohash_from_blake3};
 use n0_mainline::{Dht, Id};
@@ -27,22 +27,12 @@ fn discovery_infohash(psk: &[u8]) -> Id {
 impl PeerDiscovery {
     pub async fn new(
         endpoint: &Endpoint,
+        dht: Dht,
+        index: AddrIndex,
         psk: &[u8],
         timeout: Option<Duration>,
     ) -> color_eyre::Result<Self> {
         let infohash = discovery_infohash(psk);
-
-        let dht = Dht::client().context("failed to start Mainline DHT")?;
-
-        if !dht.bootstrapped().await? {
-            bail!("Mainline DHT bootstrap failed");
-        }
-
-        let index = AddrIndex::builder(dht.clone())
-            .n0_defaults()
-            .build()
-            .await
-            .context("failed to discover address index")?;
 
         let publisher = Publisher::new(endpoint.secret_key().clone(), dht.clone(), index.clone());
 
