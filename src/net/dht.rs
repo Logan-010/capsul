@@ -1,3 +1,4 @@
+use blake3::Hash;
 use color_eyre::eyre::{Context, bail};
 use iroh::{Endpoint, EndpointId};
 use iroh_mainline_endpoint_discovery::{AddrIndex, Publisher, Resolver, infohash_from_blake3};
@@ -5,26 +6,30 @@ use n0_mainline::{Dht, Id};
 use std::time::Duration;
 use tokio::time::timeout;
 
-const DISCOVERY_DOMAIN: &str = "capsul-mainline-discovery-v1";
-const LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
-
 pub struct PeerDiscovery {
     // Keep publisher alive to renew announcements.
     _publisher: Publisher,
     resolver: Resolver,
     infohash: Id,
     self_id: EndpointId,
+    lookup_timeout: Duration,
 }
+
+const DISCOVERY_DOMAIN: &str = "Capsul DHT discovery v1.0.0";
 
 fn discovery_infohash(psk: &[u8]) -> Id {
     let key = blake3::derive_key(DISCOVERY_DOMAIN, psk);
 
-    let hash = blake3::Hash::from_bytes(key);
+    let hash = Hash::from_bytes(key);
     Id::from(infohash_from_blake3(&hash))
 }
 
 impl PeerDiscovery {
-    pub async fn start(endpoint: &Endpoint, psk: &[u8]) -> color_eyre::Result<Self> {
+    pub async fn new(
+        endpoint: &Endpoint,
+        psk: &[u8],
+        timeout: Option<Duration>,
+    ) -> color_eyre::Result<Self> {
         let infohash = discovery_infohash(psk);
 
         let dht = Dht::client().context("failed to start Mainline DHT")?;
@@ -50,11 +55,12 @@ impl PeerDiscovery {
             resolver,
             infohash,
             self_id: endpoint.id(),
+            lookup_timeout: timeout.unwrap_or(Duration::from_secs(15)),
         })
     }
 
     pub async fn find_peers(&self) -> color_eyre::Result<Vec<EndpointId>> {
-        let peers = timeout(LOOKUP_TIMEOUT, self.resolver.resolve(self.infohash))
+        let peers = timeout(self.lookup_timeout, self.resolver.resolve(self.infohash))
             .await
             .context("peer discovery timed out")??;
 

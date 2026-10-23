@@ -355,6 +355,7 @@ dependencies = [
  "iroh",
  "iroh-mainline-endpoint-discovery",
  "n0-mainline",
+ "rand",
  "reed-solomon-simd",
  "rustls",
  "serde",

@@ -1,8 +1,9 @@
+use super::PeerAuth;
 use blake3::Hash;
 use color_eyre::eyre::bail;
 use dashmap::DashMap;
-use iroh::{Endpoint, EndpointAddr, PublicKey, endpoint::Connection, protocol::ProtocolHandler};
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use iroh::{Endpoint, EndpointAddr, endpoint::Connection, protocol::ProtocolHandler};
+use std::{path::PathBuf, sync::Arc};
 use tokio::{fs, io, sync::RwLock};
 
 /// Hashed data exchange over Iroh API
@@ -10,9 +11,9 @@ use tokio::{fs, io, sync::RwLock};
 pub struct Exchange {
     root: PathBuf,
     max_size: Option<u64>,
-    authenticated_peers: Arc<RwLock<HashSet<PublicKey>>>,
     size: Arc<RwLock<u64>>,
     locks: Arc<DashMap<Hash, RwLock<()>>>,
+    auth: PeerAuth,
 }
 
 impl Exchange {
@@ -29,7 +30,7 @@ impl Exchange {
     const NO_MSG: &[u8] = b"NOP";
 
     /// Create a new exchange object at a object store root with an optional max size.
-    pub async fn new(root: PathBuf, max_size: Option<u64>) -> io::Result<Self> {
+    pub async fn new(root: PathBuf, max_size: Option<u64>, auth: PeerAuth) -> io::Result<Self> {
         if !fs::try_exists(&root).await? {
             fs::create_dir_all(&root).await?;
         }
@@ -80,25 +81,10 @@ impl Exchange {
         Ok(Self {
             root,
             max_size,
-            authenticated_peers: Arc::new(RwLock::new(HashSet::new())),
             size: Arc::new(RwLock::new(size)),
             locks: Arc::new(map),
+            auth,
         })
-    }
-
-    /// Add an authenticated peer to the exchange object
-    pub async fn add_peer(&self, peer: PublicKey) {
-        self.authenticated_peers.write().await.insert(peer);
-    }
-
-    /// Remove an authenticated peer
-    pub async fn remove_peer(&self, peer: &PublicKey) {
-        self.authenticated_peers.write().await.remove(peer);
-    }
-
-    /// Check if peer is authenticated
-    pub async fn has_peer(&self, peer: &PublicKey) -> bool {
-        self.authenticated_peers.read().await.contains(peer)
     }
 
     /// Get a hash from the local store
@@ -249,10 +235,6 @@ impl Exchange {
     }
 
     async fn task(&self, conn: Connection) -> color_eyre::Result<()> {
-        if !self.has_peer(&conn.remote_id()).await {
-            bail!("Unauthenticated peer");
-        }
-
         let (mut tx, mut rx) = conn.accept_bi().await?;
 
         let mut code = [0u8; Self::MSG_LEN];
@@ -277,6 +259,10 @@ impl Exchange {
                 }
             }
             Self::PUT_MSG => {
+                if !self.auth.has_peer(&conn.remote_id()).await {
+                    bail!("Unauthenticated peer");
+                }
+
                 let data = rx.read_to_end(Self::MAX_SIZE).await?;
                 rx.stop(0u8.into())?;
 
