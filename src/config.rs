@@ -3,16 +3,20 @@ use color_eyre::eyre::bail;
 use directories::ProjectDirs;
 use iroh::{PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     identity: String,
-    store: PathBuf,
+    pub listen_addr: SocketAddr,
+    pub store: PathBuf,
+    pub psk: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dht_timeout: Option<Duration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store_size: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    direct_peers: Vec<PublicKey>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    dht_peers: Vec<String>,
+    pub direct_peers: Vec<PublicKey>,
 }
 
 impl Default for Config {
@@ -25,9 +29,12 @@ impl Default for Config {
 
         Self {
             identity,
+            listen_addr: "[::]:9011".parse().expect("Valid address"),
             store,
+            psk: STANDARD.encode(rand::random::<[u8; 32]>()),
+            dht_timeout: None,
+            store_size: None,
             direct_peers: Vec::new(),
-            dht_peers: Vec::new(),
         }
     }
 }
@@ -47,15 +54,11 @@ impl Config {
         Ok(SecretKey::from_bytes(&raw_key))
     }
 
-    pub fn store(&self) -> &Path {
-        &self.store
+    pub fn encode(&self) -> color_eyre::Result<String> {
+        Ok(toml::to_string_pretty(self)?)
     }
 
-    pub fn direct_peers(&self) -> &[PublicKey] {
-        &self.direct_peers
-    }
-
-    pub fn dht_peers(&self) -> &[String] {
-        &self.dht_peers
+    pub fn decode<D: AsRef<str>>(data: D) -> color_eyre::Result<Self> {
+        Ok(toml::from_str(data.as_ref())?)
     }
 }

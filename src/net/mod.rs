@@ -1,8 +1,7 @@
 mod exchange;
-use exchange::Exchange;
+pub use exchange::Exchange;
 
-mod dht;
-use dht::{HashLookup, PeerDiscovery};
+pub mod dht;
 
 mod auth;
-use auth::PeerAuth;
+pub use auth::PeerAuth;
